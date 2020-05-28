@@ -102,6 +102,10 @@ AssetRewrite.prototype.canProcessFile = function(relativePath) {
 }
 
 AssetRewrite.prototype.rewriteAssetPath = function (string, assetPath, replacementPath) {
+
+  // Early exit: does the file contain the asset path?
+  if (string.indexOf(assetPath) === -1) return string;
+
   var newString = string;
 
   /*
@@ -109,26 +113,27 @@ AssetRewrite.prototype.rewriteAssetPath = function (string, assetPath, replaceme
    *
    * Uses a regular expression to find assets in html tags, css backgrounds, handlebars pre-compiled templates, etc.
    *
-   * ["\'\\(=]{1} - Match one of "'(= exactly one time
+   * ["\'(=] - Match one of "'(= exactly one time
    * \\s* - Any amount of white space
-   * ( - Starts the first pattern match
-   * [^"\'\\(\\)=]* - Do not match any of ^"'()= 0 or more times
-   * /([.*+?^=!:${}()|\[\]\/\\])/g - Replace .*+?^=!:${}()|[]/\ in filenames with an escaped version for an exact name match
-   * [^"\'\\(\\)\\\\>=]* - Do not match any of ^"'()\>= 0 or more times - Explicitly add \ here because of handlebars compilation
-   * ) - End first pattern match
+   * ( - Starts the first capture group
+   * [^"\'()=]* - Do not match any of ^"'()= 0 or more times
+   * [^"\n\'()\\>=]* - Do not match any of ^"\n'()\>= 0 or more times - Explicitly add \ here because of handlebars compilation
+   * ) - End first capture group
+   * (\\?[^"\')> ]*)? - Allow for query parameters to be present after the URL of an asset
    * \\s* - Any amount of white space
-   * [\\\\]* - Allow any amount of \ - For handlebars compilation (includes \\\)
+   * \\\\* - Allow any amount of \ - For handlebars compilation (includes \\\)
    * \\s* - Any amount of white space
-   * ["\'\\)> ]{1} - Match one of "'( > exactly one time
+   * ["\')>\s] - Match one of "'(\n> exactly one time
    */
 
-  var re = new RegExp('["\'\\(=]{1}\\s*([^"\'\\(\\)=]*' + escapeRegExp(assetPath) + '[^"\'\\(\\)\\\\>=]*)\\s*[\\\\]*\\s*["\'\\)> ]{1}', 'g');
+  var re = new RegExp('["\'(=]\\s*([^"\'()=]*' + escapeRegExp(assetPath) + '[^"\n\'()\\>=]*)(\\?[^"\')> ]*)?\\s*\\\\*\\s*["\')>\s]', 'g');
   var match = null;
+  
   /*
    * This is to ignore matches that should not be changed
    * Any URL encoded match that would be ignored above will be ignored by this: "'()=\
    */
-  var ignoreLibraryCode = new RegExp('(%22|%27|%5C|%28|%29|%3D)[^"\'\\(\\)=]*' + escapeRegExp(assetPath));
+  var ignoreLibraryCode = new RegExp('%(22|27|5C|28|29|3D)[^"\'()=]*' + escapeRegExp(assetPath));
 
   while (match = re.exec(newString)) {
     var replaceString = '';
@@ -136,18 +141,20 @@ AssetRewrite.prototype.rewriteAssetPath = function (string, assetPath, replaceme
       continue;
     }
 
-    if (this.prepend && this.prepend !== '') {
-      replaceString = this.prepend + replacementPath;
-    } else {
-      replaceString = match[1].replace(assetPath, replacementPath);
+    replaceString = match[1].replace(assetPath, replacementPath);
+
+    if (this.prepend && replaceString.indexOf(this.prepend) !== 0) {
+      var removeLeadingRelativeOrSlashRegex = new RegExp('^(\\.*/)*(.*)$');
+      replaceString = this.prepend + removeLeadingRelativeOrSlashRegex.exec(replaceString)[2];
     }
 
     newString = newString.replace(new RegExp(escapeRegExp(match[1]), 'g'), replaceString);
   }
+
   var self = this;
   return newString.replace(new RegExp('sourceMappingURL=' + escapeRegExp(assetPath)), function(wholeMatch) {
     var replaceString = replacementPath;
-    if (self.prepend && self.prepend !== '' && (!/^sourceMappingURL=(http|https|\/\/)/.test(wholeMatch))) {
+    if (self.prepend && (!/^sourceMappingURL=(http|https|\/\/)/.test(wholeMatch))) {
       replaceString = self.prepend + replacementPath;
     }
     return wholeMatch.replace(assetPath, replaceString);
@@ -203,6 +210,9 @@ AssetRewrite.prototype.generateAssetMapKeys = function () {
   this.assetMapKeys = keys;
 };
 
+/*
+ * /([.*+?^=!:${}()|\[\]\/\\])/g - Replace .*+?^=!:${}()|[]/\ in filenames with an escaped version for an exact name match
+ */
 function escapeRegExp(string) {
   return string.replace(/([.*+?^${}()|\[\]\/\\])/g, "\\$1");
 }

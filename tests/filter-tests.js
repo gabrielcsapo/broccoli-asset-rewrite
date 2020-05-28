@@ -92,8 +92,10 @@ describe('broccoli-asset-rev', function() {
     var node = new AssetRewrite(sourcePath + '/input', {
       assetMap: {
         'foo/bar/widget.js': 'blahzorz-1.js',
+        'dont/fingerprint/me.js': 'dont/fingerprint/me.js',
         'images/sample.png': 'images/fingerprinted-sample.png',
-        'assets/images/foobar.png': 'assets/images/foobar-fingerprint.png'
+        'assets/images/foobar.png': 'assets/images/foobar-fingerprint.png',
+        'img/saturation.png': 'assets/img/saturation-fingerprint.png'
       },
       prepend: 'https://cloudfront.net/'
     });
@@ -151,6 +153,97 @@ describe('broccoli-asset-rev', function() {
       },
       prepend: 'https://cloudfront.net/'
     });
+    builder = new broccoli.Builder(node);
+    return builder.build().then(function (graph) {
+      confirmOutput(graph.directory, sourcePath + '/output');
+    });
+  });
+
+  it('maintains fragments', function () {
+    var sourcePath = 'tests/fixtures/fragments';
+    var node = new AssetRewrite(sourcePath + '/input', {
+      assetMap: {
+        'images/defs.svg': 'images/fingerprinted-defs.svg'
+      }
+    });
+
+    builder = new broccoli.Builder(node);
+    return builder.build().then(function (graph) {
+      confirmOutput(graph.directory, sourcePath + '/output');
+    });
+  });
+
+  it('maintains fragments with prepend', function () {
+    var sourcePath = 'tests/fixtures/fragments-prepend';
+    var node = new AssetRewrite(sourcePath + '/input', {
+      assetMap: {
+        'images/defs.svg': 'images/fingerprinted-defs.svg'
+      },
+      prepend: 'https://cloudfront.net/'
+    });
+
+    builder = new broccoli.Builder(node);
+    return builder.build().then(function (graph) {
+      confirmOutput(graph.directory, sourcePath + '/output');
+    });
+  });
+
+  it('replaces absolute URLs with prepend', function () {
+    var sourcePath = 'tests/fixtures/absolute-prepend';
+    var node = new AssetRewrite(sourcePath + '/input', {
+      assetMap: {
+        'my-image.png': 'my-image-fingerprinted.png',
+        'dont/fingerprint/me.js': 'dont/fingerprint/me.js'
+      },
+      prepend: 'https://cloudfront.net/'
+    });
+
+    builder = new broccoli.Builder(node);
+    return builder.build().then(function (graph) {
+      confirmOutput(graph.directory, sourcePath + '/output');
+    });
+  });
+
+  it('handles URLs with query parameters in them', function () {
+    var sourcePath = 'tests/fixtures/query-strings';
+    var node = new AssetRewrite(sourcePath + '/input', {
+      assetMap: {
+        'foo/bar/widget.js': 'foo/bar/fingerprinted-widget.js',
+        'script-tag-with-query-parameters.html': 'script-tag-with-query-parameters.html',
+      },
+    });
+
+    builder = new broccoli.Builder(node);
+    return builder.build().then(function (graph) {
+      confirmOutput(graph.directory, sourcePath + '/output');
+    });
+  });
+
+  it('handles JavaScript files in a reasonable amount of time', function () {
+    this.timeout(500);
+    var sourcePath = 'tests/fixtures/js-perf';
+    var node = new AssetRewrite(sourcePath + '/input', {
+      assetMap: JSON.parse(fs.readFileSync(__dirname + '/fixtures/js-perf/asset-map.json')),
+      replaceExtensions: ['js'],
+    });
+
+    builder = new broccoli.Builder(node);
+    return builder.build().then(function (graph) {
+      confirmOutput(graph.directory, sourcePath + '/output');
+    })
+  });
+
+  it('ignores JavaScript comments with URLs', function () {
+    var sourcePath = 'tests/fixtures/js-comment';
+    var node = new AssetRewrite(sourcePath + '/input', {
+      replaceExtensions: ['js'],
+      assetMap: {
+        'the.map': 'the-other-map',
+        'app.js': 'http://cdn.absolute.com/app.js'
+      },
+      prepend: '/'
+    });
+
     builder = new broccoli.Builder(node);
     return builder.build().then(function (graph) {
       confirmOutput(graph.directory, sourcePath + '/output');
